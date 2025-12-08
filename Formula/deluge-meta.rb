@@ -7,12 +7,10 @@ class DelugeMeta < Formula
   sha256 "f0fc64e052334ef294ca3951975dd926f129d62813f6c909bb523d914abe6537"
   license "GPL-3.0-only"
 
-  bottle do
-    root_url "https://github.com/Amar1729/homebrew-deluge-meta/releases/download/deluge-meta-2.2.0"
-    sha256 cellar: :any,                 arm64_sonoma: "be3b50b75769327522a5447235543e01771e7a5c88c944e4ee5738050a4193d6"
-    sha256 cellar: :any,                 ventura:      "f98f4b839652317ee8735c6dfc531ed1f5b1052302318e1d6ccc3e16503eac1b"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "d0904d7b39d91f5a9e88ae375abce802400753a8ecbe75e39aa0706e26a268e6"
-  end
+  # Bottles will be built via GitHub Actions when releases are created
+  # bottle do
+  #   root_url "https://github.com/vinayakkulkarni/homebrew-deluge-meta/releases/download/deluge-meta-2.2.0"
+  # end
 
   depends_on "rust" => :build
   depends_on "adwaita-icon-theme"
@@ -28,7 +26,6 @@ class DelugeMeta < Formula
   depends_on "pygobject3"
   depends_on "python-setuptools"
   depends_on "python@3.13"
-  depends_on "six"
 
   uses_from_macos "libffi"
   uses_from_macos "zlib"
@@ -127,6 +124,13 @@ class DelugeMeta < Formula
   resource "service-identity" do
     url "https://files.pythonhosted.org/packages/07/a5/dfc752b979067947261dbbf2543470c58efe735c3c1301dd870ef27830ee/service_identity-24.2.0.tar.gz"
     sha256 "b8683ba13f0d39c6cd5d625d2c5f65421d6d707b013b375c355751557cbe8e09"
+  end
+
+  # six is needed for Python 2/3 compatibility in some dependencies
+  # Moved from Homebrew dependency to pip resource since Homebrew disabled the six formula
+  resource "six" do
+    url "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz"
+    sha256 "ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"
   end
 
   resource "Twisted" do
