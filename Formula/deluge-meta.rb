@@ -151,6 +151,15 @@ class DelugeMeta < Formula
   def install
     virtualenv_install_with_resources using: "python@3.13"
 
+    # Get the libtorrent-rasterbar Python bindings path
+    libtorrent_site_packages = Formula["libtorrent-rasterbar"].opt_prefix/Language::Python.site_packages("python@3.13")
+
+    # Create symlinks for libtorrent in the virtualenv
+    site_packages = libexec/Language::Python.site_packages("python@3.13")
+    Dir["#{libtorrent_site_packages}/libtorrent*"].each do |f|
+      (site_packages/File.basename(f)).make_symlink(f) unless (site_packages/File.basename(f)).exist?
+    end
+
     %w[deluge deluge-console deluge-gtk deluge-web deluged].each do |cmd|
       (bin/cmd).write_env_script(libexec/"bin/#{cmd}", PYTHONPATH: ENV["PYTHONPATH"])
     end
