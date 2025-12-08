@@ -31,90 +31,52 @@ jobs:
           # Install the formula
           brew install --build-from-source vinayakkulkarni/deluge-meta/deluge-meta
 
-      - name: Install py2app
+      - name: Create Deluge.app wrapper
         run: |
-          # Install py2app in the deluge virtualenv
-          /opt/homebrew/opt/deluge-meta/libexec/bin/pip install py2app
+          # Create a proper .app wrapper that launches deluge-gtk
+          # This approach works better than py2app for GTK apps on macOS
 
-      - name: Create setup.py for py2app
-        run: |
-          cat > /tmp/setup.py << 'EOF'
-          from setuptools import setup
-
-          APP = ['/opt/homebrew/opt/deluge-meta/libexec/bin/deluge-gtk']
-          DATA_FILES = []
-          OPTIONS = {
-              'argv_emulation': False,
-              'iconfile': None,  # TODO: Add icon
-              'packages': [
-                  'deluge',
-                  'libtorrent',
-                  'gi',
-                  'cairo',
-                  'twisted',
-                  'OpenSSL',
-                  'cryptography',
-              ],
-              'includes': [
-                  'gi',
-                  'gi.repository.Gtk',
-                  'gi.repository.Gdk',
-                  'gi.repository.GdkPixbuf',
-                  'gi.repository.GLib',
-                  'gi.repository.GObject',
-                  'gi.repository.Pango',
-              ],
-              'excludes': ['tkinter', 'test'],
-              'plist': {
-                  'CFBundleName': 'Deluge',
-                  'CFBundleDisplayName': 'Deluge',
-                  'CFBundleIdentifier': 'org.deluge-torrent.deluge',
-                  'CFBundleVersion': '2.2.0',
-                  'CFBundleShortVersionString': '2.2.0',
-                  'NSHighResolutionCapable': True,
-                  'LSMinimumSystemVersion': '11.0',
-                  'NSRequiresAquaSystemAppearance': False,
-              },
-          }
-
-          setup(
-              name='Deluge',
-              app=APP,
-              data_files=DATA_FILES,
-              options={'py2app': OPTIONS},
-              setup_requires=['py2app'],
-          )
-          EOF
-
-      - name: Build .app bundle
-        run: |
-          cd /tmp
-          /opt/homebrew/opt/deluge-meta/libexec/bin/python setup.py py2app --dist-dir ./dist
-        continue-on-error: true
-
-      - name: Alternative - Create simple app wrapper
-        if: failure()
-        run: |
-          # If py2app fails, create a simple .app wrapper script
-          APP_DIR="/tmp/dist/Deluge.app"
+          APP_DIR="$GITHUB_WORKSPACE/dist/Deluge.app"
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
 
           # Create the launcher script
-          cat > "$APP_DIR/Contents/MacOS/Deluge" << 'EOF'
+          cat > "$APP_DIR/Contents/MacOS/Deluge" << 'LAUNCHER'
           #!/bin/bash
           # Deluge.app launcher
+          # This wrapper script launches deluge-gtk from Homebrew installation
 
-          export PATH="/opt/homebrew/bin:$PATH"
+          # Ensure Homebrew paths are available
+          if [[ -d "/opt/homebrew/bin" ]]; then
+              export PATH="/opt/homebrew/bin:$PATH"
+          elif [[ -d "/usr/local/bin" ]]; then
+              export PATH="/usr/local/bin:$PATH"
+          fi
+
+          # Set GTK backend for macOS
           export GDK_BACKEND=quartz
 
+          # Suppress Python deprecation warnings
+          export PYTHONWARNINGS="ignore::UserWarning"
+
+          # Check if deluge-gtk is available via Homebrew
+          DELUGE_GTK="/opt/homebrew/opt/deluge-meta/bin/deluge-gtk"
+          if [[ ! -x "$DELUGE_GTK" ]]; then
+              DELUGE_GTK="/usr/local/opt/deluge-meta/bin/deluge-gtk"
+          fi
+
+          if [[ ! -x "$DELUGE_GTK" ]]; then
+              osascript -e 'display alert "Deluge Not Found" message "Please install Deluge via Homebrew:\n\nbrew tap vinayakkulkarni/deluge-meta\nbrew install deluge-meta" as critical'
+              exit 1
+          fi
+
           # Run deluge-gtk
-          exec /opt/homebrew/opt/deluge-meta/bin/deluge-gtk "$@"
-          EOF
+          exec "$DELUGE_GTK" "$@"
+          LAUNCHER
           chmod +x "$APP_DIR/Contents/MacOS/Deluge"
 
           # Create Info.plist
-          cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
+          cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -133,6 +95,8 @@ jobs:
               <string>APPL</string>
               <key>CFBundleExecutable</key>
               <string>Deluge</string>
+              <key>CFBundleIconFile</key>
+              <string>Deluge</string>
               <key>LSMinimumSystemVersion</key>
               <string>11.0</string>
               <key>NSHighResolutionCapable</key>
@@ -141,17 +105,59 @@ jobs:
               <false/>
               <key>LSApplicationCategoryType</key>
               <string>public.app-category.utilities</string>
+              <key>CFBundleDocumentTypes</key>
+              <array>
+                  <dict>
+                      <key>CFBundleTypeName</key>
+                      <string>BitTorrent File</string>
+                      <key>CFBundleTypeExtensions</key>
+                      <array>
+                          <string>torrent</string>
+                      </array>
+                      <key>CFBundleTypeRole</key>
+                      <string>Viewer</string>
+                      <key>LSHandlerRank</key>
+                      <string>Default</string>
+                  </dict>
+              </array>
+              <key>CFBundleURLTypes</key>
+              <array>
+                  <dict>
+                      <key>CFBundleURLName</key>
+                      <string>Magnet URL</string>
+                      <key>CFBundleURLSchemes</key>
+                      <array>
+                          <string>magnet</string>
+                      </array>
+                  </dict>
+              </array>
           </dict>
           </plist>
-          EOF
+          PLIST
 
-          echo "Simple .app wrapper created at $APP_DIR"
+          # Try to get an icon from the installed deluge package
+          DELUGE_ICON="/opt/homebrew/opt/deluge-meta/libexec/lib/python3.14/site-packages/deluge/ui/data/icons/hicolor/scalable/apps/deluge.svg"
+          if [[ -f "$DELUGE_ICON" ]]; then
+              # Convert SVG to ICNS if we have the tools
+              if command -v rsvg-convert &>/dev/null && command -v iconutil &>/dev/null; then
+                  mkdir -p /tmp/deluge-icons.iconset
+                  for size in 16 32 64 128 256 512; do
+                      rsvg-convert -w $size -h $size "$DELUGE_ICON" -o "/tmp/deluge-icons.iconset/icon_${size}x${size}.png"
+                      rsvg-convert -w $((size*2)) -h $((size*2)) "$DELUGE_ICON" -o "/tmp/deluge-icons.iconset/icon_${size}x${size}@2x.png"
+                  done
+                  iconutil -c icns -o "$APP_DIR/Contents/Resources/Deluge.icns" /tmp/deluge-icons.iconset || true
+              fi
+          fi
+
+          echo "Deluge.app created at $APP_DIR"
+          ls -la "$APP_DIR/Contents/"
+          ls -la "$APP_DIR/Contents/MacOS/"
 
       - name: Create DMG
         run: |
           # Create a DMG from the .app
           mkdir -p /tmp/dmg-contents
-          cp -R /tmp/dist/Deluge.app /tmp/dmg-contents/
+          cp -R "$GITHUB_WORKSPACE/dist/Deluge.app" /tmp/dmg-contents/
 
           # Create a symlink to /Applications for easy drag-drop
           ln -s /Applications /tmp/dmg-contents/Applications
@@ -160,20 +166,23 @@ jobs:
           hdiutil create -volname "Deluge" \
             -srcfolder /tmp/dmg-contents \
             -ov -format UDZO \
-            /tmp/Deluge-2.2.0-arm64.dmg
+            "$GITHUB_WORKSPACE/Deluge-2.2.0-arm64.dmg"
+
+          echo "DMG created:"
+          ls -la "$GITHUB_WORKSPACE/Deluge-2.2.0-arm64.dmg"
 
       - name: Upload .app artifact
         uses: actions/upload-artifact@v4
         with:
           name: Deluge-app-arm64
-          path: /tmp/dist/Deluge.app
+          path: dist/Deluge.app
           if-no-files-found: warn
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: Deluge-dmg-arm64
-          path: /tmp/Deluge-2.2.0-arm64.dmg
+          path: Deluge-2.2.0-arm64.dmg
           if-no-files-found: warn
 
       - name: Upload to Release
@@ -181,6 +190,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            /tmp/Deluge-2.2.0-arm64.dmg
+            Deluge-2.2.0-arm64.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
