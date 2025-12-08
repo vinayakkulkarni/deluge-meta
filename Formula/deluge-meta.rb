@@ -169,8 +169,14 @@ class DelugeMeta < Formula
       end
     end
 
+    # Create wrapper scripts that suppress the pkg_resources deprecation warning
+    # Deluge uses pkg_resources for plugin management and upstream hasn't migrated yet
     %w[deluge deluge-console deluge-gtk deluge-web deluged].each do |cmd|
-      (bin/cmd).write_env_script(libexec/"bin/#{cmd}", PYTHONPATH: ENV["PYTHONPATH"])
+      (bin/cmd).write_env_script(
+        libexec/"bin/#{cmd}",
+        PYTHONPATH: ENV["PYTHONPATH"],
+        PYTHONWARNINGS: "ignore::UserWarning"
+      )
     end
 
     man1.install Dir["docs/man/*.1"]
