@@ -25,7 +25,7 @@ class DelugeMeta < Formula
   depends_on "pycparser"
   depends_on "pygobject3"
   depends_on "python-setuptools"
-  depends_on "python@3.13"
+  depends_on "python@3.14"
 
   uses_from_macos "libffi"
   uses_from_macos "zlib"
@@ -149,15 +149,24 @@ class DelugeMeta < Formula
   end
 
   def install
-    virtualenv_install_with_resources using: "python@3.13"
+    python3 = "python@3.14"
+    virtualenv_install_with_resources using: python3
 
-    # Get the libtorrent-rasterbar Python bindings path
-    libtorrent_site_packages = Formula["libtorrent-rasterbar"].opt_prefix/Language::Python.site_packages("python@3.13")
+    # libtorrent-rasterbar Python bindings need to be linked into the virtualenv
+    # The Python version should match what libtorrent-rasterbar was built against
+    lt_formula = Formula["libtorrent-rasterbar"]
 
-    # Create symlinks for libtorrent in the virtualenv
-    site_packages = libexec/Language::Python.site_packages("python@3.13")
-    Dir["#{libtorrent_site_packages}/libtorrent*"].each do |f|
-      (site_packages/File.basename(f)).make_symlink(f) unless (site_packages/File.basename(f)).exist?
+    # The virtualenv site-packages where we need to create symlinks
+    venv_site_packages = libexec/"lib/python3.14/site-packages"
+
+    # libtorrent-rasterbar installs to its own lib/python3.X/site-packages
+    lt_site_packages = lt_formula.opt_lib/"python3.14/site-packages"
+
+    if lt_site_packages.exist?
+      Dir["#{lt_site_packages}/libtorrent*"].each do |f|
+        target = venv_site_packages/File.basename(f)
+        target.make_symlink(f) unless target.exist?
+      end
     end
 
     %w[deluge deluge-console deluge-gtk deluge-web deluged].each do |cmd|

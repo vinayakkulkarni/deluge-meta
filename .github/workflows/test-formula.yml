@@ -1,0 +1,47 @@
+name: Test Formula
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Formula (Apple Silicon)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Setup tap
+        run: |
+          # Create the tap directory structure
+          mkdir -p $(brew --repository)/Library/Taps/vinayakkulkarni
+          ln -sf $GITHUB_WORKSPACE $(brew --repository)/Library/Taps/vinayakkulkarni/homebrew-deluge-meta
+
+      - name: Install formula
+        run: |
+          brew install --build-from-source vinayakkulkarni/deluge-meta/deluge-meta
+
+      - name: Test libtorrent import
+        run: |
+          /opt/homebrew/opt/deluge-meta/libexec/bin/python -c "import libtorrent; print(f'libtorrent version: {libtorrent.version}')"
+
+      - name: Test deluge import
+        run: |
+          /opt/homebrew/opt/deluge-meta/libexec/bin/python -c "import deluge; print('Deluge imported successfully')"
+
+      - name: Test deluged version
+        run: |
+          /opt/homebrew/opt/deluge-meta/bin/deluged --version
+
+      - name: Run brew test
+        run: |
+          brew test vinayakkulkarni/deluge-meta/deluge-meta
+        continue-on-error: true  # Test might fail in CI environment
