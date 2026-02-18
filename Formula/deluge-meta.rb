@@ -6,13 +6,11 @@ class DelugeMeta < Formula
   url "https://files.pythonhosted.org/packages/d5/d7/b655ee66d208002564c35179b49b0cc9f22916a309785dec2676c85d7c05/deluge-2.2.0.tar.gz"
   sha256 "f0fc64e052334ef294ca3951975dd926f129d62813f6c909bb523d914abe6537"
   license "GPL-3.0-only"
-  revision 2
+  revision 3
 
-  bottle do
-    root_url "https://github.com/Amar1729/homebrew-deluge-meta/releases/download/deluge-meta-2.2.0_2"
-    sha256 cellar: :any, arm64_sequoia: "5a1bf3d478632d76c93887a86e3322e69142cde24f12bed69e33fa441ce9e1eb"
-    sha256 cellar: :any, arm64_sonoma:  "fa49ff730e4df8bc046d41f48d5a7338973a7c4ba52e8a6f0bdf62e7e2eb596b"
-  end
+  # bottle do
+  #   root_url "https://github.com/vinayakkulkarni/homebrew-deluge-meta/releases/download/deluge-meta-2.2.0_3"
+  # end
 
   depends_on "rust" => :build
   depends_on "adwaita-icon-theme"
@@ -33,16 +31,16 @@ class DelugeMeta < Formula
   uses_from_macos "libffi"
   uses_from_macos "zlib"
 
-  # manually added since Automat requires wheel (cmd bdist_wheel) to build
-  resource "wheel" do
-    url "https://files.pythonhosted.org/packages/8a/98/2d9906746cdc6a6ef809ae6338005b3f21bb568bea3165cfc6a243fdc25c/wheel-0.45.1.tar.gz"
-    sha256 "661e1abd9198507b1409a20c02106d9670b2576e916d58f520316666abca6729"
+  # Pinned to <78: setuptools 78+ removed pkg_resources (pypa/setuptools#5174).
+  # Deluge imports it at runtime via deluge/pluginmanagerbase.py.
+  resource "setuptools" do
+    url "https://files.pythonhosted.org/packages/d1/53/43d99d7687e8cdef5ab5f9ec5eaf2c0423c2b35133a2b7e7bc276fc32b21/setuptools-75.8.2.tar.gz"
+    sha256 "4880473a969e5f23f2a2be3646b2dfd84af9028716d398e46192f84bc36900d2"
   end
 
-  # manually added since homebrew-core deprecated python-specific packages like six
-  resource "six" do
-    url "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz"
-    sha256 "ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"
+  resource "wheel" do
+    url "https://files.pythonhosted.org/packages/89/24/a2eb353a6edac9a0303977c4cb048134959dd2a51b48a269dfc9dde00c8a/wheel-0.46.3.tar.gz"
+    sha256 "e3e79874b07d776c40bd6033f8ddf76a7dad46a7b8aa1b2787a83083519a1803"
   end
 
   resource "attrs" do
@@ -66,8 +64,8 @@ class DelugeMeta < Formula
   end
 
   resource "cryptography" do
-    url "https://files.pythonhosted.org/packages/9f/33/c00162f49c0e2fe8064a62cb92b93e50c74a72bc370ab92f86112b33ff62/cryptography-46.0.3.tar.gz"
-    sha256 "a8b17438104fed022ce745b362294d9ce35b4c2e45c1d958ad4a4b019285f4a1"
+    url "https://files.pythonhosted.org/packages/60/04/ee2a9e8542e4fa2773b81771ff8349ff19cdd56b7258a0cc442639052edb/cryptography-46.0.5.tar.gz"
+    sha256 "abace499247268e3757271b2f1e244b36b06f8515cf27c4d49468fc9eb16e93d"
   end
 
   resource "deluge" do
@@ -101,13 +99,13 @@ class DelugeMeta < Formula
   end
 
   resource "packaging" do
-    url "https://files.pythonhosted.org/packages/a1/d4/1fc4078c65507b51b96ca8f8c3ba19e6a61c8253c72794544580a7b6c24d/packaging-25.0.tar.gz"
-    sha256 "d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f"
+    url "https://files.pythonhosted.org/packages/65/ee/299d360cdc32edc7d2cf530f3accf79c4fca01e96ffc950d8a52213bd8e4/packaging-26.0.tar.gz"
+    sha256 "00243ae351a257117b6a241061796684b084ed1c516a08c48a3f7e147a9d80b4"
   end
 
   resource "pyasn1" do
-    url "https://files.pythonhosted.org/packages/ba/e9/01f1a64245b89f039897cb0130016d79f77d52669aae6ee7b159a6c4c018/pyasn1-0.6.1.tar.gz"
-    sha256 "6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034"
+    url "https://files.pythonhosted.org/packages/fe/b6/6e630dff89739fcd427e3f72b3d905ce0acb85a45d4ec3e2678718a3487f/pyasn1-0.6.2.tar.gz"
+    sha256 "9b59a2b25ba7e4f8197db7686c09fb33e658b98339fadb826e9512629017833b"
   end
 
   resource "pyasn1-modules" do
@@ -140,8 +138,6 @@ class DelugeMeta < Formula
     sha256 "b8683ba13f0d39c6cd5d625d2c5f65421d6d707b013b375c355751557cbe8e09"
   end
 
-  # six is needed for Python 2/3 compatibility in some dependencies
-  # Moved from Homebrew dependency to pip resource since Homebrew disabled the six formula
   resource "six" do
     url "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz"
     sha256 "ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"
@@ -158,8 +154,8 @@ class DelugeMeta < Formula
   end
 
   resource "zope-interface" do
-    url "https://files.pythonhosted.org/packages/71/c9/5ec8679a04d37c797d343f650c51ad67d178f0001c363e44b6ac5f97a9da/zope_interface-8.1.1.tar.gz"
-    sha256 "51b10e6e8e238d719636a401f44f1e366146912407b58453936b781a19be19ec"
+    url "https://files.pythonhosted.org/packages/86/a4/77daa5ba398996d16bb43fc721599d27d03eae68fe3c799de1963c72e228/zope_interface-8.2.tar.gz"
+    sha256 "afb20c371a601d261b4f6edb53c3c418c249db1a9717b0baafc9a9bb39ba1224"
   end
 
   # use native file dialog
@@ -168,31 +164,8 @@ class DelugeMeta < Formula
   def install
     virtualenv_install_with_resources using: "python@3.14"
 
-    # libtorrent-rasterbar Python bindings need to be linked into the virtualenv
-    # The Python version should match what libtorrent-rasterbar was built against
-    lt_formula = Formula["libtorrent-rasterbar"]
-
-    # The virtualenv site-packages where we need to create symlinks
-    venv_site_packages = libexec/"lib/python3.14/site-packages"
-
-    # libtorrent-rasterbar installs to its own lib/python3.X/site-packages
-    lt_site_packages = lt_formula.opt_lib/"python3.14/site-packages"
-
-    if lt_site_packages.exist?
-      Dir["#{lt_site_packages}/libtorrent*"].each do |f|
-        target = venv_site_packages/File.basename(f)
-        target.make_symlink(f) unless target.exist?
-      end
-    end
-
-    # Create wrapper scripts that suppress the pkg_resources deprecation warning
-    # Deluge uses pkg_resources for plugin management and upstream hasn't migrated yet
     %w[deluge deluge-console deluge-gtk deluge-web deluged].each do |cmd|
-      (bin/cmd).write_env_script(
-        libexec/"bin/#{cmd}",
-        PYTHONPATH: ENV["PYTHONPATH"],
-        PYTHONWARNINGS: "ignore::UserWarning"
-      )
+      (bin/cmd).write_env_script(libexec/"bin/#{cmd}", PYTHONPATH: ENV["PYTHONPATH"])
     end
 
     man1.install Dir["docs/man/*.1"]
