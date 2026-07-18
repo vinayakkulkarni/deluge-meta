@@ -160,7 +160,13 @@ class DelugeMeta < Formula
     sha256 "7a3ba1c5877f0f3e3906b02ddf793abed2becc2948116414ce0e1dd820b68d6d"
   end
 
-  # use native file dialog
+  # Patches applied from __END__:
+  #   1. Use native macOS file dialogs (Gtk.FileChooserNative).
+  #   2. Drop 'ignore_resume_timestamps' from the libtorrent settings_pack.
+  #      libtorrent >= 2.0.6 marks it DEPRECATED_SET, removing its external
+  #      name, so Deluge 2.2.0 crashes at session construction with
+  #      "KeyError: unknown name in settings_pack: ignore_resume_timestamps".
+  #      Not yet fixed upstream. Ref: https://github.com/arvidn/libtorrent/pull/6668
   patch :DATA
 
   def install
@@ -422,3 +428,170 @@ index 59b22264b..8f1729c3b 100644
              filepath = deluge.common.decode_bytes(chooser.get_filename())
          else:
              chooser.destroy()
+diff --git a/deluge/core/core.py b/deluge/core/core.py
+index e621a45..ab321fe 100644
+--- a/deluge/core/core.py
++++ b/deluge/core/core.py
+@@ -10,6 +10,7 @@
+ import glob
+ import logging
+ import os
++import re
+ import shutil
+ import tempfile
+ from base64 import b64decode, b64encode
+@@ -117,7 +118,6 @@ class Core(component.Component):
+         settings_pack = {
+             'peer_fingerprint': peer_id,
+             'user_agent': user_agent,
+-            'ignore_resume_timestamps': True,
+         }
+         self.session = lt.session(settings_pack, flags=0)
+ 
+@@ -241,8 +241,24 @@ class Core(component.Component):
+ 
+         Args:
+             settings: A dict of lt session settings to apply.
++
++        Settings removed from newer libtorrent (e.g. cache_size,
++        half_open_limit in >= 2.1) are dropped instead of raising KeyError.
+         """
+-        self.session.apply_settings(settings)
++        settings = dict(settings)
++        while settings:
++            try:
++                self.session.apply_settings(settings)
++                return
++            except KeyError as ex:
++                match = re.search(
++                    r"unknown name in settings_pack: (\w+)", str(ex)
++                )
++                if not match or match.group(1) not in settings:
++                    raise
++                key = match.group(1)
++                del settings[key]
++                log.warning('Dropped setting unknown to libtorrent: %s', key)
+ 
+     @staticmethod
+     def _create_peer_id(version: str) -> str:
+diff --git a/deluge/core/preferencesmanager.py b/deluge/core/preferencesmanager.py
+index 4dbf4d1..6c84f84 100644
+--- a/deluge/core/preferencesmanager.py
++++ b/deluge/core/preferencesmanager.py
+@@ -306,9 +306,9 @@ class PreferencesManager(component.Component):
+     def _on_set_encryption(self, key, value):
+         # Convert Deluge enc_level values to libtorrent enc_level values.
+         pe_enc_level = {
+-            0: lt.enc_level.plaintext,
+-            1: lt.enc_level.rc4,
+-            2: lt.enc_level.both,
++            0: lt.enc_level.pe_plaintext,
++            1: lt.enc_level.pe_rc4,
++            2: lt.enc_level.pe_both,
+         }
+         self.core.apply_session_settings(
+             {
+diff --git a/deluge/core/torrentmanager.py b/deluge/core/torrentmanager.py
+index 1233553..0de34f0 100644
+--- a/deluge/core/torrentmanager.py
++++ b/deluge/core/torrentmanager.py
+@@ -475,9 +475,6 @@ class TorrentManager(component.Component):
+             add_torrent_params['name'] = options['name']
+         if options['pre_allocate_storage']:
+             add_torrent_params['storage_mode'] = lt.storage_mode_t.storage_mode_allocate
+-        if resume_data:
+-            add_torrent_params['resume_data'] = resume_data
+-
+         # Set flags: enable duplicate_is_error & override_resume_data, disable auto_managed.
+         add_torrent_params['flags'] = (
+             LT_DEFAULT_ADD_TORRENT_FLAGS | lt.torrent_flags.duplicate_is_error
+@@ -487,6 +484,38 @@ class TorrentManager(component.Component):
+         if options['super_seeding']:
+             add_torrent_params['flags'] |= lt.torrent_flags.super_seeding
+ 
++        if resume_data:
++            # libtorrent >= 2.1 removed the dict 'resume_data' key and its
++            # internal merge. Parse into an add_torrent_params object (this
++            # preserves piece progress) and overlay Deluge's computed fields.
++            try:
++                atp = lt.read_resume_data(resume_data)
++            except RuntimeError as ex:
++                log.warning('Unable to parse torrent resume data: %s', ex)
++            else:
++                atp.ti = add_torrent_params['ti']
++                atp.name = add_torrent_params['name']
++                save_path = add_torrent_params['save_path']
++                if isinstance(save_path, bytes):
++                    save_path = save_path.decode('utf8')
++                atp.save_path = save_path
++                atp.storage_mode = add_torrent_params.get(
++                    'storage_mode', lt.storage_mode_t.storage_mode_sparse
++                )
++                # Resume-file state flags take precedence here; this mask
++                # mirrors libtorrent handle_backwards_compatible_resume_data().
++                resume_state_flags = (
++                    lt.torrent_flags.seed_mode
++                    | lt.torrent_flags.super_seeding
++                    | lt.torrent_flags.auto_managed
++                    | lt.torrent_flags.sequential_download
++                    | lt.torrent_flags.paused
++                )
++                atp.flags = (
++                    add_torrent_params['flags'] & ~resume_state_flags
++                ) | (atp.flags & resume_state_flags)
++                return torrent_id, atp
++
+         return torrent_id, add_torrent_params
+ 
+     def add(
+diff --git a/deluge/_libtorrent.py b/deluge/_libtorrent.py
+--- a/deluge/_libtorrent.py
++++ b/deluge/_libtorrent.py
+@@ -34,3 +34,47 @@
+     raise LibtorrentImportError(
+         f'Deluge {get_version()} requires libtorrent >= {REQUIRED_VERSION}'
+     )
++
++# libtorrent 2.1 removed the 1.2-era torrent_status/torrent_handle accessors
++# that Deluge 2.2.0 still relies on. Restore them as compatibility shims so
++# every call site keeps working (status.paused, handle.is_paused(), etc.).
++if not hasattr(lt.torrent_status, 'paused'):
++    import datetime as _dt
++
++    _flags = lt.torrent_flags
++
++    def _flag_prop(flag):
++        return property(lambda s: bool(s.flags & flag))
++
++    def _duration_prop(attr):
++        return property(lambda s: int(getattr(s, attr).total_seconds()))
++
++    def _since_prop(attr):
++        def _get(s):
++            v = getattr(s, attr)
++            if v is None:
++                return -1
++            if isinstance(v, _dt.datetime):
++                now = _dt.datetime.now(v.tzinfo) if v.tzinfo else _dt.datetime.now()
++                return max(0, int((now - v).total_seconds()))
++            return int(v)
++
++        return property(_get)
++
++    lt.torrent_status.paused = _flag_prop(_flags.paused)
++    lt.torrent_status.auto_managed = _flag_prop(_flags.auto_managed)
++    lt.torrent_status.seed_mode = _flag_prop(_flags.seed_mode)
++    lt.torrent_status.super_seeding = _flag_prop(_flags.super_seeding)
++    lt.torrent_status.active_time = _duration_prop('active_duration')
++    lt.torrent_status.seeding_time = _duration_prop('seeding_duration')
++    lt.torrent_status.finished_time = _duration_prop('finished_duration')
++    lt.torrent_status.time_since_download = _since_prop('last_download')
++    lt.torrent_status.time_since_upload = _since_prop('last_upload')
++
++if not hasattr(lt.torrent_handle, 'is_paused'):
++    lt.torrent_handle.is_paused = lambda self: bool(
++        self.status().flags & lt.torrent_flags.paused
++    )
++
++if not hasattr(lt.torrent_handle, 'get_torrent_info'):
++    lt.torrent_handle.get_torrent_info = lambda self: self.torrent_file()
