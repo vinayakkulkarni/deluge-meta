@@ -595,3 +595,38 @@ diff --git a/deluge/_libtorrent.py b/deluge/_libtorrent.py
 +
 +if not hasattr(lt.torrent_handle, 'get_torrent_info'):
 +    lt.torrent_handle.get_torrent_info = lambda self: self.torrent_file()
+diff --git a/deluge/core/torrent.py b/deluge/core/torrent.py
+--- a/deluge/core/torrent.py
++++ b/deluge/core/torrent.py
+@@ -893,18 +893,23 @@
+         if not self.has_metadata:
+             return []
+ 
++        files = self.torrent_info.files()
++        num_files = files.num_files()
++
+         try:
+-            files_progresses = zip(
+-                self.handle.file_progress(), self.torrent_info.files()
+-            )
++            file_progress = self.handle.file_progress()
+         except Exception:
+             # Handle libtorrent >=2.0.0,<=2.0.4 file_progress error
+-            files_progresses = zip(iter(lambda: 0, 1), self.torrent_info.files())
++            file_progress = []
+ 
+-        return [
+-            progress / _file.size if _file.size else 0.0
+-            for progress, _file in files_progresses
+-        ]
++        # libtorrent >=2.1 file_storage is not iterable, so index it directly.
++        progresses = []
++        for index in range(num_files):
++            file_size = files.file_size(index)
++            progress = file_progress[index] if index < len(file_progress) else 0
++            progresses.append(progress / file_size if file_size else 0.0)
++
++        return progresses
+ 
+     def get_tracker_host(self):
+         """Get the hostname of the currently connected tracker.
