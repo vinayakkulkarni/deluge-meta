@@ -31,11 +31,11 @@ class DelugeMeta < Formula
   uses_from_macos "libffi"
   uses_from_macos "zlib"
 
-  # Pinned to <78: setuptools 78+ removed pkg_resources (pypa/setuptools#5174).
-  # Deluge imports it at runtime via deluge/pluginmanagerbase.py.
+  # Pinned to <81: setuptools 81+ removes pkg_resources, which Deluge imports at
+  # runtime via deluge/pluginmanagerbase.py and deluge/ui/ui_entry.py.
   resource "setuptools" do
-    url "https://files.pythonhosted.org/packages/d1/53/43d99d7687e8cdef5ab5f9ec5eaf2c0423c2b35133a2b7e7bc276fc32b21/setuptools-75.8.2.tar.gz"
-    sha256 "4880473a969e5f23f2a2be3646b2dfd84af9028716d398e46192f84bc36900d2"
+    url "https://files.pythonhosted.org/packages/76/95/faf61eb8363f26aa7e1d762267a8d602a1b26d4f3a1e758e92cb3cb8b054/setuptools-80.10.2.tar.gz"
+    sha256 "8b0e9d10c784bf7d262c4e5ec5d4ec94127ce206e8738f29a437945fbc219b70"
   end
 
   resource "wheel" do
