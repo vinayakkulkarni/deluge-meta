@@ -26,7 +26,7 @@ class DelugeMeta < Formula
   depends_on "pycparser"
   depends_on "pygobject3"
   depends_on "python-setuptools"
-  depends_on "python@3.14"
+  depends_on "python@3.15"
 
   uses_from_macos "libffi"
   uses_from_macos "zlib"
@@ -162,15 +162,28 @@ class DelugeMeta < Formula
 
   # Patches applied from __END__:
   #   1. Use native macOS file dialogs (Gtk.FileChooserNative).
+  #
+  # Items 2-7 adapt Deluge 2.2.0 to libtorrent 2.1, which removed several APIs
+  # Deluge still relies on. None are fixed upstream as of 2.2.0.
   #   2. Drop 'ignore_resume_timestamps' from the libtorrent settings_pack.
   #      libtorrent >= 2.0.6 marks it DEPRECATED_SET, removing its external
-  #      name, so Deluge 2.2.0 crashes at session construction with
+  #      name, so Deluge crashes at session construction with
   #      "KeyError: unknown name in settings_pack: ignore_resume_timestamps".
-  #      Not yet fixed upstream. Ref: https://github.com/arvidn/libtorrent/pull/6668
+  #      Ref: https://github.com/arvidn/libtorrent/pull/6668
+  #   3. Skip settings_pack keys libtorrent no longer knows, and rename
+  #      conns_limit/conn_speed to connections_limit/connection_speed.
+  #   4. Rename enc_level.plaintext/rc4/both to the pe_* spellings.
+  #   5. Load resume data via lt.read_resume_data() instead of the removed
+  #      'resume_data' entry in add_torrent_params, preserving piece progress.
+  #   6. Restore torrent_status accessors and torrent_handle helpers that
+  #      libtorrent dropped, via shims in deluge/_libtorrent.py.
+  #   7. Index file_storage by position in get_file_progress; it is no longer
+  #      iterable. Also read alert.tracker_url, since tracker_error_alert.url
+  #      was removed.
   patch :DATA
 
   def install
-    virtualenv_install_with_resources using: "python@3.14"
+    virtualenv_install_with_resources using: "python@3.15"
 
     %w[deluge deluge-console deluge-gtk deluge-web deluged].each do |cmd|
       (bin/cmd).write_env_script(libexec/"bin/#{cmd}", PYTHONPATH: ENV["PYTHONPATH"])
@@ -630,3 +643,15 @@ diff --git a/deluge/core/torrent.py b/deluge/core/torrent.py
  
      def get_tracker_host(self):
          """Get the hostname of the currently connected tracker.
+diff --git a/deluge/core/torrentmanager.py b/deluge/core/torrentmanager.py
+--- a/deluge/core/torrentmanager.py
++++ b/deluge/core/torrentmanager.py
+@@ -1419,7 +1419,7 @@
+         # libtorrent 1.2 added endpoint struct to each tracker. to prevent false updates
+         # we will need to verify that at least one endpoint to the errored tracker is working
+         for tracker in torrent.handle.trackers():
+-            if tracker['url'] == alert.url:
++            if tracker['url'] == alert.tracker_url:
+                 if any(
+                     endpoint['last_error']['value'] == 0
+                     for endpoint in tracker['endpoints']
